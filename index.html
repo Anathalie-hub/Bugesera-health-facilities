@@ -463,10 +463,9 @@
 
   <!-- LEGEND -->
   <div class="map-legend">
-    <div class="legend-title">Legend</div>
-    <div class="legend-row"><div class="legend-dot" style="background:var(--hospital)"></div> District Hospital</div>
-    <div class="legend-row"><div class="legend-dot" style="background:var(--centre)"></div> Health Centre</div>
-    <div class="legend-row"><div class="legend-dot" style="background:var(--post)"></div> Health Post</div>
+   <div class="legend-row"><div class="legend-dot" style="background:transparent;color:var(--hospital);font-weight:800;font-size:0.72rem;display:flex;align-items:center;justify-content:center;">H</div> District Hospital</div>
+    <div class="legend-row"><div class="legend-dot" style="background:transparent;color:var(--centre);font-weight:800;font-size:0.72rem;display:flex;align-items:center;justify-content:center;">C</div> Health Centre</div>
+    <div class="legend-row"><div class="legend-dot" style="background:transparent;color:var(--post);font-weight:800;font-size:0.72rem;display:flex;align-items:center;justify-content:center;">P</div> Health Post</div>
     <div class="legend-row">
       <div style="width:14px;height:10px;border:1.6px solid #1b5e3b;border-radius:2px;background:rgba(27,94,59,0.05)"></div> Sector Boundary
     </div>
@@ -603,7 +602,7 @@ const boundariesLayer = L.geoJSON(bugeseraBoundaries, {
   },
   onEachFeature: function (feature, layer) {
     const p = feature.properties;
-    layer.bindTooltip(`<strong>${p.sector} Sector</strong><br>Population (2022): ${p.population ? p.population.toLocaleString() : 'N/A'}`, { sticky: true });
+    layer.bindTooltip(`<strong>${p.sector} Sector</strong>`, { sticky: true });
     layer.on('mouseover', function () { this.setStyle({ weight: 3, fillOpacity: 0.12 }); });
     layer.on('mouseout', function () { boundariesLayer.resetStyle(this); });
   }
@@ -864,18 +863,34 @@ async function drawRoute(fromLat, fromLng, toLat, toLng, name) {
   let distMeters = null;
   let durationSec = null;
 
-  try {
-    // OSRM public demo server — foot (walking) profile, follows the actual road/path network
-    const url = `https://router.project-osrm.org/route/v1/foot/${fromLng},${fromLat};${destLngFix(destLng)},${destLatFix(destLat)}?overview=full&geometries=geojson`;
+  // Try the foot (walking) profile first, then fall back to the driving profile
+  // (the public OSRM walking graph has gaps in rural areas like Bugesera, the
+  // driving graph follows the same roads and has much better coverage there).
+  async function tryProfile(profile) {
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+    console.log('[Bugesera Map] requesting route:', url);
     const res = await fetch(url);
     const data = await res.json();
+    console.log('[Bugesera Map] OSRM response (' + profile + '):', data.code, data);
     if (data.code === 'Ok' && data.routes && data.routes.length) {
-      const route = data.routes[0];
+      return data.routes[0];
+    }
+    return null;
+  }
+
+  try {
+    let route = await tryProfile('foot');
+    if (!route) {
+      console.log('[Bugesera Map] foot profile failed, trying driving profile as fallback...');
+      route = await tryProfile('driving');
+    }
+    if (route) {
       routeCoords = route.geometry.coordinates.map(c => [c[1], c[0]]); // to [lat,lng]
       distMeters = route.distance;
-      durationSec = route.duration;
+      durationSec = route.duration; // note: this will be driving time if foot failed, recalculated below for walking
     }
   } catch (e) {
+    console.error('[Bugesera Map] routing request failed:', e);
     routeCoords = null;
   }
 
@@ -894,7 +909,7 @@ async function drawRoute(fromLat, fromLng, toLat, toLng, name) {
   map.fitBounds(routeLayer.getBounds(), { padding: [60, 60] });
 
   const distKm = (distMeters / 1000).toFixed(2);
-  const walkMin = durationSec ? Math.round(durationSec / 60) : Math.round(distMeters / 83.33);
+  const walkMin = Math.round(distMeters / 83.33);
   const driveMin = Math.round(distMeters / 500);
   const usedRealRoute = !!(routeCoords && routeCoords.length > 1);
 
@@ -918,9 +933,6 @@ async function drawRoute(fromLat, fromLng, toLat, toLng, name) {
     </div>`;
 }
 
-// Tiny no-op helpers kept for coordinate clarity/readability in the fetch URL above
-function destLngFix(v){ return v; }
-function destLatFix(v){ return v; }
 
 function clearRoute() {
   if (routeLayer) map.removeLayer(routeLayer);
