@@ -403,13 +403,38 @@
   .legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font-size: 0.68rem; color: var(--text); }
   .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
-  @media (max-width: 600px) {
-    .header-title { font-size: 0.85rem; }
-    .search-wrap input { width: 110px; }
-    .side-panel { width: calc(100vw - 24px); right: 12px; }
-    .dir-panel { width: calc(100vw - 24px); }
-    .map-legend { display: none; }
+ @media (max-width: 640px) {
+    header { height: 48px; padding: 0 12px; }
+    .header-logo { width: 28px; height: 28px; font-size: 14px; }
+    .header-sub, .header-right { display: none; }
+    .toolbar { display: none; }
+    .mobile-nav { display: flex; }
+    #map { margin-bottom: 56px; }
+    .side-panel { width:100%; right:0; left:0; top:auto; bottom:56px; border-radius:18px 18px 0 0; max-height:55vh; overflow-y:auto; }
+    .dir-panel { width:100%; left:0; right:0; bottom:56px; border-radius:18px 18px 0 0; }
+    .locate-btn { bottom: 72px; }
+    .map-legend { bottom:68px; right:8px; padding:7px 10px; }
   }
+  .mobile-nav { display:none; position:fixed; bottom:0; left:0; right:0; height:56px; background:var(--surface); border-top:1px solid #dde8dd; z-index:1200; box-shadow:0 -2px 10px rgba(0,0,0,0.1); }
+  .nav-btn { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background:none; border:none; font-family:'Inter',sans-serif; color:var(--text-muted); font-size:0.58rem; font-weight:500; cursor:pointer; padding:6px 2px; }
+  .nav-btn i { font-size:1.1rem; }
+  .nav-btn.active { color:var(--primary); }
+  .drawer-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:1300; opacity:0; pointer-events:none; transition:opacity 0.25s; }
+  .drawer-overlay.open { opacity:1; pointer-events:all; display:block; }
+  .mobile-drawer { display:none; position:fixed; bottom:56px; left:0; right:0; background:var(--surface); border-radius:18px 18px 0 0; box-shadow:0 -4px 24px rgba(0,0,0,0.15); z-index:1400; padding:0 0 16px 0; transform:translateY(110%); transition:transform 0.3s cubic-bezier(0.4,0,0.2,1); max-height:80vh; overflow-y:auto; }
+  .mobile-drawer.open { transform:translateY(0); display:block; }
+  .drawer-handle { width:36px; height:4px; background:#ccc; border-radius:2px; margin:10px auto 14px; }
+  .drawer-title { font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; padding:0 16px 8px; border-bottom:1px solid #eef2ee; margin-bottom:12px; }
+  .drawer-section { padding:0 16px 12px; }
+  .drawer-section-label { font-size:0.62rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+  .drawer-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .drawer-chip { display:flex; align-items:center; gap:5px; padding:6px 14px; border:1.5px solid #ccd8cc; background:var(--surface); color:var(--text-muted); border-radius:20px; font-size:0.74rem; font-weight:500; cursor:pointer; transition:all 0.15s; font-family:'Inter',sans-serif; white-space:nowrap; }
+  .drawer-chip.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .drawer-chip.h-active { background:var(--hospital); color:#fff; border-color:var(--hospital); }
+  .drawer-chip.c-active { background:var(--centre); color:#fff; border-color:var(--centre); }
+  .drawer-chip.p-active { background:var(--post); color:#fff; border-color:var(--post); }
+  .mobile-search-wrap { margin:0 16px; display:flex; align-items:center; background:var(--surface2); border:1.5px solid #ccd8cc; border-radius:22px; padding:8px 14px; gap:8px; }
+  .mobile-search-wrap input { background:transparent; border:none; color:var(--text); font-size:0.82rem; outline:none; flex:1; font-family:'Inter',sans-serif; }
 </style>
 </head>
 <body>
@@ -500,7 +525,18 @@
     <div class="dir-body" id="dirBody"></div>
   </div>
 </div>
-
+<div class="mobile-nav">
+  <button class="nav-btn" onclick="openDrawer('filter')"><i class="fas fa-sliders-h"></i>Filter</button>
+  <button class="nav-btn" onclick="openDrawer('search')"><i class="fas fa-search"></i>Search</button>
+  <button class="nav-btn" onclick="locateMe()"><i class="fas fa-crosshairs"></i>Locate</button>
+  <button class="nav-btn" onclick="openDrawer('layers')"><i class="fas fa-layer-group"></i>Layers</button>
+</div>
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="mobile-drawer" id="mobileDrawer">
+  <div class="drawer-handle" onclick="closeDrawer()"></div>
+  <div class="drawer-title" id="drawerTitle">Options</div>
+  <div id="drawerBody"></div>
+</div>
 <script>
 // ── DATA ──
 const facilities = [
@@ -960,6 +996,52 @@ map.on('contextmenu', function(e) {
 });
 
 L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+// ── MOBILE DRAWER ──
+function openDrawer(type) {
+  const drawer = document.getElementById('mobileDrawer');
+  const overlay = document.getElementById('drawerOverlay');
+  const body = document.getElementById('drawerBody');
+  const title = document.getElementById('drawerTitle');
+  if (drawer.classList.contains('open') && body.dataset.type === type) { closeDrawer(); return; }
+  body.dataset.type = type;
+  if (type === 'filter') {
+    title.textContent = 'Show Facilities';
+    body.innerHTML = `<div class="drawer-section"><div class="drawer-chips">
+      <button class="drawer-chip active" onclick="setFilter('all');updateDrawerChips(this,'active')">All</button>
+      <button class="drawer-chip" onclick="setFilter('DISTRICT HOSPITAL');updateDrawerChips(this,'h-active')">🏥 Hospital</button>
+      <button class="drawer-chip" onclick="setFilter('HEALTH CENTRE');updateDrawerChips(this,'c-active')">🏨 Health Centre</button>
+      <button class="drawer-chip" onclick="setFilter('Health post');updateDrawerChips(this,'p-active')">➕ Health Post</button>
+    </div></div>`;
+  } else if (type === 'layers') {
+    title.textContent = 'Layers & Basemap';
+    body.innerHTML = `<div class="drawer-section"><div class="drawer-section-label">Basemap</div><div class="drawer-chips">
+      <button class="drawer-chip active" id="m-street" onclick="setBasemap('street');document.getElementById('m-street').classList.add('active');document.getElementById('m-sat').classList.remove('active')">🗺 Street</button>
+      <button class="drawer-chip" id="m-sat" onclick="setBasemap('satellite');document.getElementById('m-sat').classList.add('active');document.getElementById('m-street').classList.remove('active')">🛰 Satellite</button>
+    </div></div>
+    <div class="drawer-section"><div class="drawer-section-label">Layers</div><div class="drawer-chips">
+      <button class="drawer-chip active" id="m-sectors" onclick="toggleBoundaries();this.classList.toggle('active')">▢ Sectors</button>
+      <button class="drawer-chip" id="m-roads" onclick="toggleRoads();this.classList.toggle('active')">— Roads</button>
+    </div></div>`;
+  } else if (type === 'search') {
+    title.textContent = 'Search';
+    body.innerHTML = `<div class="mobile-search-wrap"><i class="fas fa-search" style="color:var(--text-muted)"></i>
+      <input type="text" placeholder="Search facility, sector or cell…" oninput="doSearch(this.value)" autofocus/></div>
+      <div id="mobileResults" style="padding:8px 16px 0"></div>`;
+    setTimeout(()=>body.querySelector('input')?.focus(),100);
+  }
+  drawer.classList.add('open');
+  overlay.classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('mobileDrawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+}
+
+function updateDrawerChips(btn, cls) {
+  btn.closest('.drawer-chips').querySelectorAll('.drawer-chip').forEach(b=>b.className='drawer-chip');
+  btn.classList.add(cls);
+}
 </script>
 </body>
 </html>
